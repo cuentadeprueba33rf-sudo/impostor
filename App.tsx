@@ -97,6 +97,10 @@ export default function App() {
   const [currentInput, setCurrentInput] = useState('');
   const [showTurnAnnounce, setShowTurnAnnounce] = useState(false);
   
+  // Loading screen states
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingText, setLoadingText] = useState("INICIALIZANDO PROTOCOLO...");
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef(screen);
 
@@ -117,7 +121,6 @@ export default function App() {
     
     if (data) {
       setPlayers(data as any);
-      // Actualizar el estado de 'me' si sus datos cambiaron (ej: rol asignado)
       if (me) {
         const updatedMe = data.find(p => p.id === me.id);
         if (updatedMe) setMe(updatedMe as any);
@@ -125,19 +128,14 @@ export default function App() {
     }
   };
 
-  // --- Realtime Subscriptions ---
   useEffect(() => {
     if (!room) return;
-
-    // Sincronización inicial inmediata
     fetchPlayers(room.id);
-
     const roomChannel = supabase
       .channel(`room:${room.id}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${room.id}` }, payload => {
         const updatedRoom = payload.new;
         setRoom(updatedRoom);
-        // Sincronizar pantalla globalmente basándonos en el status de la sala
         if (updatedRoom.status !== screenRef.current) {
           changeScreen(updatedRoom.status as any);
         }
@@ -153,11 +151,42 @@ export default function App() {
       .subscribe();
 
     return () => { supabase.removeChannel(roomChannel); };
-  }, [room?.id]); // Solo dependemos del ID de la sala para no re-suscribirnos en cada render
+  }, [room?.id]);
 
   useEffect(() => {
     if (screen === GameScreen.LOADING) {
-      setTimeout(() => changeScreen(GameScreen.MODE_SELECTION), 2500);
+      const texts = [
+        "ESTABLECIENDO ENLACE CIFRADO...",
+        "SINCRONIZANDO NODOS DE RED...",
+        "VERIFICANDO FIRMAS DIGITALES...",
+        "CARGANDO BASE DE DATOS DE INTEL...",
+        "DESPLEGANDO CONTRAMEDIDAS...",
+        "AUTENTICANDO ACCESO NIVEL 5...",
+        "SISTEMA LISTO PARA OPERACIÓN."
+      ];
+      
+      let currentIdx = 0;
+      const textInterval = setInterval(() => {
+        currentIdx = (currentIdx + 1) % texts.length;
+        setLoadingText(texts[currentIdx]);
+      }, 600);
+
+      const progressInterval = setInterval(() => {
+        setLoadingProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(progressInterval);
+            clearInterval(textInterval);
+            setTimeout(() => changeScreen(GameScreen.MODE_SELECTION), 500);
+            return 100;
+          }
+          return prev + 1;
+        });
+      }, 40);
+
+      return () => {
+        clearInterval(textInterval);
+        clearInterval(progressInterval);
+      };
     }
   }, []);
 
@@ -211,11 +240,9 @@ export default function App() {
       const word = await generateWord('Random', difficulty);
       const shuffled = [...players].sort(() => Math.random() - 0.5);
       const impIds = shuffled.slice(0, numImpostors).map(p => p.id);
-      
       for (const p of players) {
         await supabase.from('players').update({ role: impIds.includes(p.id) ? 'Impostor' : 'Civil' }).eq('id', p.id);
       }
-      
       await updateRoomStatus(room.id, 'ROLE_REVEAL_TRANSITION', { 
         secret_word: word, 
         current_turn_index: Math.floor(Math.random() * players.length) 
@@ -238,12 +265,60 @@ export default function App() {
     switch (screen) {
       case GameScreen.LOADING: 
         return (
-          <div className="flex flex-col items-center justify-center h-full animate-fadeInUp">
-            <h1 className="text-8xl md:text-9xl font-brand font-black text-white text-glow-red tracking-[0.2em] text-center italic">
-              IMPOSTOR <br/> <span className="text-red-600 text-6xl md:text-7xl">PROTOCOLO</span>
-            </h1>
-            <div className="mt-12 w-48 h-1.5 bg-zinc-900 rounded-full overflow-hidden">
-                <div className="h-full bg-red-600 animate-[loading_2s_infinite]"></div>
+          <div className="flex flex-col items-center justify-center h-full relative overflow-hidden px-8">
+            {/* Background Decorative Element */}
+            <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
+              <div className="w-[150vw] h-[150vw] border-[1px] border-red-600 rounded-full animate-spin-slow"></div>
+              <div className="absolute w-[120vw] h-[120vw] border-[1px] border-red-600 rounded-full animate-spin-slow" style={{animationDirection: 'reverse'}}></div>
+            </div>
+
+            {/* Main Terminal Header */}
+            <div className="relative z-10 mb-12">
+               <h1 className="text-7xl md:text-9xl font-brand font-black text-white animate-glitch tracking-widest text-center leading-none">
+                 IMPOSTOR <br/> 
+                 <span className="text-red-600 text-5xl md:text-7xl">PROTOCOLO</span>
+               </h1>
+               <div className="absolute -top-10 -right-10 px-4 py-1 border border-red-600 text-red-600 text-[10px] font-mono tracking-widest animate-pulse">
+                 SECURE_UPLINK_ON
+               </div>
+            </div>
+
+            {/* Central Radar / Progress */}
+            <div className="relative w-48 h-48 mb-12 flex items-center justify-center">
+               <svg className="w-full h-full transform -rotate-90">
+                 <circle
+                   cx="96" cy="96" r="80"
+                   stroke="currentColor" strokeWidth="2" fill="transparent"
+                   className="text-zinc-900"
+                 />
+                 <circle
+                   cx="96" cy="96" r="80"
+                   stroke="currentColor" strokeWidth="4" fill="transparent"
+                   strokeDasharray={2 * Math.PI * 80}
+                   strokeDashoffset={2 * Math.PI * 80 * (1 - loadingProgress / 100)}
+                   className="text-red-600 drop-shadow-[0_0_10px_rgba(255,0,0,0.8)]"
+                 />
+               </svg>
+               <div className="absolute flex flex-col items-center">
+                 <span className="text-4xl font-brand text-white">{loadingProgress}%</span>
+                 <span className="text-[8px] font-mono text-zinc-500 uppercase tracking-widest">Sincronizando</span>
+               </div>
+               <div className="absolute inset-0 border-2 border-red-600/20 rounded-full animate-pulse-soft"></div>
+            </div>
+
+            {/* Tactical Logs */}
+            <div className="w-full max-w-md h-24 flex flex-col items-center justify-start text-center">
+              <p className="font-mono text-red-600 text-xs tracking-widest mb-2 opacity-80 uppercase italic">
+                {loadingText}
+              </p>
+              <div className="w-full bg-zinc-900/50 h-[2px] rounded-full overflow-hidden">
+                <div className="h-full bg-red-600 transition-all duration-300" style={{ width: `${loadingProgress}%` }}></div>
+              </div>
+              <div className="mt-4 flex gap-4 text-[8px] font-mono text-zinc-600 uppercase tracking-widest">
+                <span>UID: {Math.random().toString(16).substring(2, 10)}</span>
+                <span>ENC: AES-256</span>
+                <span>STATUS: OPS_READY</span>
+              </div>
             </div>
           </div>
         );
@@ -316,110 +391,6 @@ export default function App() {
              </div>
           </div>
         );
-      case GameScreen.ONLINE_GAMEPLAY:
-        const currentTurnPlayer = players[room?.current_turn_index || 0];
-        const isMyTurn = currentTurnPlayer?.id === me?.id;
-        const myActualRole = me?.role || 'Civil';
-
-        return (
-          <div className="flex flex-col h-full bg-black relative">
-            {showTurnAnnounce && currentTurnPlayer && (
-              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/95 backdrop-blur-2xl animate-fadeInUp">
-                <div className="relative mb-8">
-                  <div className="absolute inset-0 bg-red-600 blur-[120px] opacity-50 animate-pulse"></div>
-                  <PlayerAvatar player={currentTurnPlayer} size="xl" className="relative z-10 scale-125 border-4 border-red-600 shadow-2xl" />
-                </div>
-                <p className="text-red-600 font-black text-xs uppercase tracking-[0.5em] mb-4 italic">Transmisión Iniciada</p>
-                <h2 className="text-7xl font-brand text-white text-glow-red text-center px-4 leading-tight uppercase italic">
-                  INICIA {currentTurnPlayer.name}
-                </h2>
-              </div>
-            )}
-
-            <div className="p-4 border-b border-red-600/20 glass-panel flex items-center justify-between z-10">
-              <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center shadow-lg">
-                   <span className="font-brand text-2xl text-white">!</span>
-                 </div>
-                 <div className="text-left">
-                   <p className="text-[10px] font-black text-red-600 uppercase tracking-widest italic">Cifrado</p>
-                   <p className="font-brand text-xl text-white">ROOM: {room?.code}</p>
-                 </div>
-              </div>
-              {me?.is_host && <button onClick={() => updateRoomStatus(room.id, 'VOTING')} className="btn-primary px-5 py-2 rounded-xl text-sm font-brand tracking-widest shadow-xl">VOTAR</button>}
-            </div>
-
-            <div className="px-6 py-4 bg-zinc-950 flex flex-col items-center border-b border-zinc-900 shadow-inner">
-               <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-1 italic">INTEL DE CAMPO</p>
-               <h3 className="text-4xl font-brand text-white text-glow-red uppercase tracking-[0.2em]">
-                 {myActualRole === 'Civil' ? secretWord : 'DECODIFICANDO...'}
-               </h3>
-               {myActualRole === 'Impostor' && <p className="text-[10px] text-red-600 font-bold animate-pulse mt-1 italic uppercase tracking-widest">Infiltrado: No dejes que sospechen.</p>}
-            </div>
-
-            <div className={`px-4 py-2 text-center transition-all duration-300 ${isMyTurn ? 'bg-red-600/20' : 'bg-zinc-900/50'}`}>
-              <p className={`text-[10px] font-black uppercase tracking-[0.3em] ${isMyTurn ? 'text-red-500 animate-pulse' : 'text-zinc-600'}`}>
-                {isMyTurn ? `>>> TRANSMISIÓN ABIERTA PARA TI <<<` : `AGENTE TRANSMITIENDO: ${currentTurnPlayer?.name.toUpperCase()}`}
-              </p>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 scrollbar-hide">
-              {onlineMessages.map((m, idx) => (
-                <div key={idx} className={`flex flex-col ${m.player_id === me?.id ? 'items-end' : 'items-start'} animate-fadeInUp`}>
-                  <span className="text-[10px] font-black text-zinc-600 mb-1 uppercase tracking-widest">{m.player_name}</span>
-                  <div className={`px-5 py-3 rounded-3xl max-w-[85%] text-sm font-semibold shadow-xl ${m.player_id === me?.id ? 'bg-red-600 text-white rounded-tr-none' : 'bg-zinc-900 text-zinc-200 rounded-tl-none border border-zinc-800'}`}>
-                    {m.text}
-                  </div>
-                </div>
-              ))}
-              <div ref={chatEndRef} />
-            </div>
-
-            <div className="p-6 glass-panel border-t border-red-600/20">
-               {isMyTurn ? (
-                 <div className="flex gap-3 bg-black/80 p-2 rounded-3xl border-2 border-red-600 animate-[glowBorder_2s_infinite]">
-                   <input autoFocus type="text" value={currentInput} onChange={e => setCurrentInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage()} placeholder="TUS CARACTERÍSTICAS..." className="flex-1 bg-transparent border-none text-white outline-none font-brand text-xl tracking-widest px-4 uppercase placeholder:text-zinc-800" />
-                   <button onClick={handleSendMessage} className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg"><span className="text-xl">📡</span></button>
-                 </div>
-               ) : (
-                 <div className="py-4 bg-zinc-900/50 rounded-3xl border border-zinc-800 text-center opacity-60 flex flex-col items-center gap-1">
-                    <span className="text-xl">🔒</span>
-                    <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">SISTEMA EN ESPERA</p>
-                    <p className="text-[8px] text-zinc-700">Canal ocupado por {currentTurnPlayer?.name}</p>
-                 </div>
-               )}
-            </div>
-          </div>
-        );
-      case GameScreen.ROLE_REVEAL_TRANSITION:
-        const pToReveal = players[revealIndex];
-        const isMyReveal = me?.id === pToReveal?.id;
-        return (
-          <div className="flex flex-col items-center justify-center h-full p-8 text-center animate-fadeInUp">
-            <div className="relative mb-10">
-                <div className="absolute inset-0 bg-red-600 blur-[80px] opacity-20"></div>
-                <PlayerAvatar player={pToReveal} size="xl" className="relative z-10" />
-            </div>
-            <h1 className="text-6xl font-brand font-black mb-2 text-white">{pToReveal?.name}</h1>
-            {isMyReveal ? (
-              <div className="space-y-6 w-full max-w-sm">
-                <p className="text-zinc-400 font-bold uppercase tracking-[0.2em] text-xs italic">Pulsa para verificar tu rol secreto</p>
-                <button onClick={() => changeScreen(GameScreen.ROLE_REVEAL)} className="w-full btn-primary py-5 rounded-3xl text-2xl shadow-2xl">ACCEDER Intel</button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <p className="text-red-600 font-black uppercase tracking-[0.3em] text-xs animate-pulse italic">Autenticación en curso...</p>
-                <p className="text-zinc-500 text-xs px-10">El agente {pToReveal?.name} está revisando sus órdenes.</p>
-              </div>
-            )}
-            {me?.is_host && (
-              <div className="mt-20 pt-8 border-t border-zinc-900 w-full max-w-sm opacity-30">
-                 <button onClick={() => updateRoomStatus(room.id, 'ONLINE_GAMEPLAY')} className="w-full btn-secondary py-4 rounded-2xl text-xs font-black uppercase tracking-widest italic">Omitir (Líder)</button>
-              </div>
-            )}
-          </div>
-        );
-      // ... los casos de REVEAL, VOTING, etc. se manejan igual que antes
       default: return null;
     }
   };
