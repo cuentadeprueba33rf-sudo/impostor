@@ -1,6 +1,7 @@
 
 export enum GameScreen {
   LOADING,
+  RECONNECT_PROMPT,
   MODE_SELECTION,
   SETUP,
   ONLINE_SETUP,
@@ -25,6 +26,7 @@ export interface Player {
   role: Role;
   votes: number;
   isReady?: boolean;
+  is_host?: boolean;
 }
 
 export interface ChatMessage {

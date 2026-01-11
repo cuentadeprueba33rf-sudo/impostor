@@ -27,13 +27,18 @@ export const joinRoom = async (code: string) => {
 };
 
 export const getPublicRooms = async () => {
+  // Obtenemos salas en lobby y también traemos el conteo de jugadores para filtrar
   const { data, error } = await supabase
     .from('rooms')
     .select('*, players(count)')
     .eq('status', 'ONLINE_LOBBY')
-    .limit(10);
+    .order('created_at', { ascending: false })
+    .limit(20);
+    
   if (error) return [];
-  return data;
+  
+  // Filtramos "nodos falsos": solo salas que tengan al menos 1 jugador
+  return data.filter(room => room.players && room.players[0] && room.players[0].count > 0);
 };
 
 export const addPlayerToRoom = async (roomId: string, name: string, photo: string | null, isHost: boolean) => {

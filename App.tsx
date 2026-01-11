@@ -66,10 +66,12 @@ export default function App() {
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
   const [loadingProgress, setLoadingProgress] = useState(0);
 
+  // Estados temporales para la reconexión
+  const [pendingSession, setPendingSession] = useState<{ room: any, me: Player } | null>(null);
+
   const screenRef = useRef(screen);
   useEffect(() => { screenRef.current = screen; }, [screen]);
 
-  // Persistencia de alias
   useEffect(() => {
     if (nameInput) localStorage.setItem('agent_alias', nameInput);
   }, [nameInput]);
@@ -79,7 +81,8 @@ export default function App() {
   };
 
   const fetchPlayers = async (roomId: string) => {
-    const { data, error } = await supabase
+    console.log("Fetching players for room:", roomId);
+    const { data } = await supabase
       .from('players')
       .select('*')
       .eq('room_id', roomId)
@@ -87,7 +90,6 @@ export default function App() {
     
     if (data) {
       setPlayers(data as any);
-      // Actualizar mi propio estado si cambió algo en el servidor
       if (me) {
         const currentMe = data.find(p => p.id === me.id);
         if (currentMe) setMe(currentMe as any);
@@ -99,44 +101,54 @@ export default function App() {
     const savedRoomId = localStorage.getItem('last_room_id');
     const savedPlayerId = localStorage.getItem('last_player_id');
     if (savedRoomId && savedPlayerId) {
-      addLog("RECUPERANDO IDENTIDAD...");
+      addLog("DETECTANDO SEÑAL PREVIA...");
       const { data: roomData } = await supabase.from('rooms').select('*').eq('id', savedRoomId).single();
       const { data: playerData } = await supabase.from('players').select('*').eq('id', savedPlayerId).single();
+      
       if (roomData && playerData) {
-        setRoom(roomData);
-        setMe(playerData as any);
-        await fetchPlayers(roomData.id);
-        setTimeout(() => setScreen(roomData.status as any), 1500);
+        // En lugar de entrar directo, guardamos y preguntamos
+        setPendingSession({ room: roomData, me: playerData as any });
         return true;
       }
     }
     return false;
   };
 
-  const refreshPublicRooms = async () => {
-    const rooms = await getPublicRooms();
-    setPublicRooms(rooms);
+  const confirmReconnect = async () => {
+    if (!pendingSession) return;
+    setRoom(pendingSession.room);
+    setMe(pendingSession.me);
+    await fetchPlayers(pendingSession.room.id);
+    changeScreen(pendingSession.room.status as any);
+    setPendingSession(null);
   };
 
-  // --- Realtime Sync Logic ---
+  const discardReconnect = () => {
+    localStorage.removeItem('last_room_id');
+    localStorage.removeItem('last_player_id');
+    setPendingSession(null);
+    changeScreen(GameScreen.MODE_SELECTION);
+  };
+
+  const refreshPublicRooms = async () => {
+    setIsLoading(true);
+    const rooms = await getPublicRooms();
+    setPublicRooms(rooms);
+    setIsLoading(false);
+  };
+
   useEffect(() => {
     if (!room?.id) return;
-
-    // Forzar carga inicial
     fetchPlayers(room.id);
-
-    // Suscripción al canal de la sala
+    const channelId = `room_${room.id}_${Date.now()}`;
     const channel = supabase
-      .channel(`room_sync_${room.id}`)
+      .channel(channelId)
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 
         table: 'players', 
         filter: `room_id=eq.${room.id}` 
-      }, (payload) => {
-        console.log("Player change detected:", payload);
-        fetchPlayers(room.id);
-      })
+      }, () => fetchPlayers(room.id))
       .on('postgres_changes', { 
         event: 'UPDATE', 
         schema: 'public', 
@@ -148,21 +160,19 @@ export default function App() {
           changeScreen(payload.new.status as any);
         }
       })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log("Canal de sincronización activo.");
-        }
-      });
+      .subscribe();
 
+    const backupInterval = setInterval(() => fetchPlayers(room.id), 5000);
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(backupInterval);
     };
   }, [room?.id]);
 
   useEffect(() => {
     if (screen === GameScreen.LOADING) {
       const boot = async () => {
-        const reconnected = await tryReconnect();
+        const hasPending = await tryReconnect();
         let p = 0;
         const inv = setInterval(() => {
           p += 2;
@@ -171,9 +181,13 @@ export default function App() {
           if (p === 60) addLog("ESTABLISHING UPLINK...");
           if (p >= 100) {
             clearInterval(inv);
-            if (!reconnected) changeScreen(GameScreen.MODE_SELECTION);
+            if (hasPending) {
+              setScreen(GameScreen.RECONNECT_PROMPT);
+            } else {
+              changeScreen(GameScreen.MODE_SELECTION);
+            }
           }
-        }, 30);
+        }, 20);
       };
       boot();
     }
@@ -239,7 +253,7 @@ export default function App() {
                   <div className="w-3 h-3 bg-red-600 rounded-full shadow-[0_0_15px_#ff0000]"></div>
                </div>
             </div>
-            <h1 className="text-4xl font-brand text-white tracking-[0.3em] mb-10">MODERN OPS</h1>
+            <h1 className="text-4xl font-brand text-white tracking-[0.3em] mb-10 text-glow">MODERN OPS</h1>
             <div className="w-full max-w-xs space-y-4">
               <div className="loading-bar-container">
                 <div className="loading-bar-fill" style={{ width: `${loadingProgress}%` }}></div>
@@ -249,6 +263,25 @@ export default function App() {
                   <span key={i} className="text-[9px] font-mono text-zinc-600 uppercase tracking-widest">{log}</span>
                 ))}
               </div>
+            </div>
+          </div>
+        );
+      case GameScreen.RECONNECT_PROMPT:
+        return (
+          <div className="flex flex-col h-full p-10 items-center justify-center text-center">
+            <div className="mb-12 relative">
+               <div className="w-24 h-24 rounded-full border-4 border-red-600/20 flex items-center justify-center">
+                  <div className="w-3 h-3 bg-red-600 rounded-full animate-pulse shadow-[0_0_20px_#ff0000]"></div>
+               </div>
+               <div className="absolute -top-2 -right-2 bg-red-600 text-[8px] font-black px-2 py-1 rounded-md text-white tracking-widest">SIGNAL DETECTED</div>
+            </div>
+            <h2 className="text-5xl font-brand text-white mb-4 tracking-widest">¿RETOMAR MISIÓN?</h2>
+            <p className="text-zinc-500 text-xs font-mono uppercase tracking-widest mb-12 max-w-[250px]">
+               Se ha detectado una sesión activa en el nodo <span className="text-white font-bold">[{pendingSession?.room?.code}]</span>. ¿Deseas volver a la frecuencia?
+            </p>
+            <div className="w-full max-w-xs space-y-4">
+               <button onClick={confirmReconnect} className="btn-modern w-full py-6 rounded-3xl text-2xl shadow-red-600/30">RETOMAR CONEXIÓN</button>
+               <button onClick={discardReconnect} className="w-full py-5 rounded-3xl text-[10px] font-black text-zinc-600 hover:text-white transition-colors tracking-[0.3em] border border-white/5 uppercase">Nueva Operación</button>
             </div>
           </div>
         );
@@ -294,7 +327,8 @@ export default function App() {
                   <button onClick={refreshPublicRooms} className="text-[10px] text-red-600 font-bold hover:underline">REFRESCAR</button>
                 </div>
                 <div className="space-y-5">
-                  {publicRooms.length === 0 && <p className="text-center text-zinc-800 text-xs font-mono py-10 italic">Buscando señales activas...</p>}
+                  {isLoading && <p className="text-center text-zinc-600 text-[10px] font-mono animate-pulse">SINCRONIZANDO RED...</p>}
+                  {!isLoading && publicRooms.length === 0 && <p className="text-center text-zinc-800 text-xs font-mono py-10 italic">No hay señales activas...</p>}
                   {publicRooms.map(r => (
                     <div key={r.id} onClick={() => handleJoinOnline(r.code)} className="glass-card p-8 flex justify-between items-center border border-white/5 hover:border-red-600/30 cursor-pointer transition-all">
                       <div>
@@ -356,22 +390,18 @@ export default function App() {
                     INICIAR MISIÓN
                   </button>
                   {players.length < 2 && (
-                    <p className="text-center text-[9px] text-zinc-600 font-bold uppercase tracking-widest">Se requieren al menos 2 agentes</p>
+                    <p className="text-center text-[9px] text-zinc-600 font-bold uppercase tracking-widest">Esperando agentes (Mín: 2)</p>
                   )}
                 </div>
               ) : (
                 <div className="py-8 rounded-3xl bg-white/5 text-center border border-white/5">
-                   <p className="text-xs font-bold text-red-600 animate-pulse tracking-[0.3em] uppercase italic">Esperando órdenes del host...</p>
+                   <p className="text-xs font-bold text-red-600 animate-pulse tracking-[0.3em] uppercase italic">Esperando órdenes del líder...</p>
                 </div>
               )}
             </footer>
           </div>
         );
-      default: return (
-        <div className="flex flex-col items-center justify-center h-full">
-           <div className="w-6 h-6 border border-red-600 border-t-transparent rounded-full animate-spin"></div>
-        </div>
-      );
+      default: return null;
     }
   };
 
