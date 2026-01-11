@@ -4,115 +4,90 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>El Impostor - Red Ops</title>
+    <title>El Impostor - Modern Ops</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
+      :root {
+        --primary: #ff1a1a;
+        --primary-glow: rgba(255, 26, 26, 0.4);
+        --bg: #050505;
+      }
+      
       body {
-        font-family: 'Montserrat', sans-serif;
-        background-color: #000000;
+        font-family: 'Inter', sans-serif;
+        background-color: var(--bg);
         color: white;
         overflow: hidden;
+        -webkit-tap-highlight-color: transparent;
       }
       
-      .bg-red-ops {
+      .modern-bg {
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
+        top: 0; left: 0; width: 100vw; height: 100vh;
         z-index: -1;
-        background: radial-gradient(circle at 50% 10%, #4c0519 0%, #1e0000 45%, #000000 100%);
-        overflow: hidden;
-      }
-      
-      .bg-red-ops::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background-image: url('https://www.transparenttextures.com/patterns/carbon-fibre.png');
-        opacity: 0.15;
+        background: 
+          radial-gradient(circle at 50% -20%, #300000 0%, transparent 50%),
+          radial-gradient(circle at 100% 100%, #1a0000 0%, transparent 40%),
+          var(--bg);
       }
 
-      /* Scanlines effect */
-      .scanlines::after {
-        content: " ";
-        display: block;
-        position: absolute;
-        top: 0; left: 0; bottom: 0; right: 0;
-        background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-        z-index: 10;
-        background-size: 100% 4px, 3px 100%;
-        pointer-events: none;
-      }
-
-      .font-brand { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.1em; }
+      .font-brand { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.05em; }
       .font-mono { font-family: 'JetBrains Mono', monospace; }
       
-      .glass-panel {
-        background: rgba(10, 0, 0, 0.7);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 0, 0, 0.2);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+      .glass-card {
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(25px);
+        -webkit-backdrop-filter: blur(25px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        border-radius: 24px;
       }
 
-      .btn-primary {
-        background: linear-gradient(135deg, #ff0000 0%, #8b0000 100%);
+      .btn-modern {
+        background: linear-gradient(135deg, #ff1a1a 0%, #a30000 100%);
         color: white;
-        font-weight: 900;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.15em;
-        box-shadow: 0 4px 15px rgba(255, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.3);
-        border: none;
-        transition: all 0.2s ease;
+        letter-spacing: 0.1em;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 10px 20px rgba(255, 26, 26, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
       }
 
-      .text-glow-red { 
-        color: #ff0000;
-        text-shadow: 0 0 10px rgba(255, 0, 0, 0.8), 0 0 20px rgba(255, 0, 0, 0.5); 
+      .btn-modern:active {
+        transform: scale(0.96);
+        filter: brightness(1.2);
       }
 
-      /* Advanced Animations */
-      @keyframes glitch {
-        0% { transform: translate(0); text-shadow: -2px 3px red, 2px -3px blue; }
-        25% { transform: translate(-2px, 2px); }
-        50% { transform: translate(2px, -2px); text-shadow: 2px -3px red, -2px 3px blue; }
-        75% { transform: translate(-2px, -2px); }
-        100% { transform: translate(0); }
+      .text-glow {
+        text-shadow: 0 0 15px var(--primary-glow);
       }
-      .animate-glitch { animation: glitch 1.5s infinite linear alternate-reverse; }
 
-      @keyframes spin-slow {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
+      @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
       }
-      .animate-spin-slow { animation: spin-slow 8s linear infinite; }
-
-      @keyframes pulse-soft {
-        0%, 100% { opacity: 0.3; transform: scale(1); }
-        50% { opacity: 0.7; transform: scale(1.05); }
-      }
-      .animate-pulse-soft { animation: pulse-soft 3s infinite ease-in-out; }
-
-      @keyframes typing {
-        from { width: 0; }
-        to { width: 100%; }
-      }
-      .typing-effect {
-        overflow: hidden;
-        white-space: nowrap;
-        border-right: 2px solid #ff0000;
-        animation: typing 2s steps(40, end), blink-caret .75s step-end infinite;
-      }
-      @keyframes blink-caret {
-        from, to { border-color: transparent }
-        50% { border-color: #ff0000; }
-      }
+      .animate-float { animation: float 4s ease-in-out infinite; }
 
       .scrollbar-hide::-webkit-scrollbar { display: none; }
+      
+      /* New Modern Loading Bars */
+      .loading-bar-container {
+        width: 100%;
+        height: 2px;
+        background: rgba(255, 255, 255, 0.05);
+        position: relative;
+        overflow: hidden;
+      }
+      .loading-bar-fill {
+        height: 100%;
+        background: var(--primary);
+        box-shadow: 0 0 10px var(--primary);
+        transition: width 0.4s ease;
+      }
     </style>
   <script type="importmap">
 {
@@ -125,8 +100,8 @@
 }
 </script>
 </head>
-  <body class="scanlines">
-    <div class="bg-red-ops"></div>
+  <body>
+    <div class="modern-bg"></div>
     <div id="root" class="h-full w-full"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
