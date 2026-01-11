@@ -1,0 +1,7 @@
+{
+  "name": "El Impostor",
+  "description": "Un juego de deducción social para jugar en persona. Los jugadores se registran con una foto, se les asignan roles secretos (Civil o Impostor), y deben descubrir quién es el impostor basándose en cómo describen una palabra secreta.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

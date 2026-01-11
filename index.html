@@ -1,0 +1,137 @@
+
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>El Impostor - Red Ops</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Montserrat', sans-serif;
+        background-color: #000000;
+        color: white;
+        overflow: hidden;
+      }
+      
+      /* Fondo Red Ops */
+      .bg-red-ops {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: -1;
+        background: radial-gradient(circle at 50% 10%, #4c0519 0%, #1e0000 45%, #000000 100%);
+        overflow: hidden;
+      }
+      
+      .bg-red-ops::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image: url('https://www.transparenttextures.com/patterns/carbon-fibre.png');
+        opacity: 0.15;
+      }
+
+      .font-brand { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.1em; }
+      
+      /* Glassmorphism Red */
+      .glass-panel {
+        background: rgba(10, 0, 0, 0.7);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 0, 0, 0.2);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+      }
+
+      .glass-card {
+        background: linear-gradient(145deg, rgba(30, 0, 0, 0.8), rgba(0, 0, 0, 0.9));
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 0, 0, 0.15);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+        border-radius: 20px;
+      }
+      
+      /* Botones Rojo Metálico */
+      .btn-primary {
+        background: linear-gradient(135deg, #ff0000 0%, #8b0000 100%);
+        color: white;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        box-shadow: 0 4px 15px rgba(255, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.3);
+        border: none;
+        transition: all 0.2s ease;
+        position: relative;
+        overflow: hidden;
+      }
+      .btn-primary::after {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 50%;
+        background: linear-gradient(rgba(255,255,255,0.2), transparent);
+      }
+      .btn-primary:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 25px rgba(255, 0, 0, 0.6);
+        filter: brightness(1.1);
+      }
+      
+      .btn-danger {
+        background: #000;
+        border: 2px solid #ff0000;
+        color: #ff0000;
+        font-weight: 800;
+        box-shadow: 0 0 15px rgba(255, 0, 0, 0.2);
+      }
+      
+      .btn-secondary {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #eee;
+      }
+
+      .text-glow-red { 
+        color: #ff0000;
+        text-shadow: 0 0 10px rgba(255, 0, 0, 0.8), 0 0 20px rgba(255, 0, 0, 0.5); 
+      }
+
+      .card-back-img {
+        background-image: url('https://play-lh.googleusercontent.com/PX_s9ovpgHBFI1WOr9Goj258fc04oH3LMkHfvyOFol_BGVTUZl1ZfhJ69Sp4AaNUXMc');
+        background-size: cover;
+        background-position: center;
+      }
+
+      /* Animaciones */
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(30px) scale(0.9); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      .animate-fadeInUp { animation: fadeInUp 0.6s cubic-bezier(0.23, 1, 0.32, 1) forwards; }
+
+      .scrollbar-hide::-webkit-scrollbar { display: none; }
+      
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1"
+  }
+}
+</script>
+</head>
+  <body>
+    <div class="bg-red-ops"></div>
+    <div id="root" class="h-full w-full"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
