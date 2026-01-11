@@ -26,6 +26,16 @@ export const joinRoom = async (code: string) => {
   return data;
 };
 
+export const getPublicRooms = async () => {
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('*, players(count)')
+    .eq('status', 'ONLINE_LOBBY')
+    .limit(10);
+  if (error) return [];
+  return data;
+};
+
 export const addPlayerToRoom = async (roomId: string, name: string, photo: string | null, isHost: boolean) => {
   const { data, error } = await supabase
     .from('players')

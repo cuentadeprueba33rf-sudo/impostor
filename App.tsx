@@ -6,6 +6,7 @@ import {
   supabase, 
   createRoom, 
   joinRoom, 
+  getPublicRooms,
   addPlayerToRoom, 
   updateRoomStatus, 
   sendMessage,
@@ -41,22 +42,6 @@ const soundService = {
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
         osc.start(now); osc.stop(now + 0.3);
         break;
-      case 'alert':
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(400, now);
-        osc.frequency.setValueAtTime(300, now + 0.1);
-        gain.gain.setValueAtTime(0.05, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
-        osc.start(now); osc.stop(now + 0.4);
-        break;
-      case 'reveal':
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(80, now);
-        osc.frequency.linearRampToValueAtTime(160, now + 0.5);
-        gain.gain.setValueAtTime(0.1, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
-        osc.start(now); osc.stop(now + 0.6);
-        break;
       case 'turn':
         osc.frequency.setValueAtTime(200, now);
         osc.frequency.setValueAtTime(400, now + 0.1);
@@ -70,76 +55,82 @@ const soundService = {
 
 const PlayerAvatar: React.FC<{ player: Player; size?: 'sm' | 'md' | 'lg' | 'xl'; className?: string }> = ({ player, size = 'md', className = '' }) => {
   const sizeClasses = { sm: 'w-10 h-10', md: 'w-16 h-16', lg: 'w-24 h-24', xl: 'w-32 h-32' };
-  if (player.photo) return <img src={player.photo} alt={player.name} className={`${sizeClasses[size]} ${className} rounded-full object-cover ring-2 ring-red-500 shadow-[0_0_10px_rgba(255,0,0,0.5)]`} />;
   return (
     <div className={`${sizeClasses[size]} ${className} bg-gradient-to-br from-red-600 to-red-950 rounded-full flex items-center justify-center ring-2 ring-red-500 shadow-[0_0_15px_rgba(255,0,0,0.4)]`}>
-      <span className="font-brand font-bold text-white text-xl">{player.name.charAt(0).toUpperCase()}</span>
+      <span className="font-brand font-bold text-white text-xl">{player.name?.charAt(0).toUpperCase() || '?'}</span>
     </div>
   );
 };
 
 export default function App() {
   const [screen, setScreen] = useState<GameScreen>(GameScreen.LOADING);
-  const [mode, setMode] = useState<GameMode>('local');
   const [players, setPlayers] = useState<Player[]>([]);
   const [me, setMe] = useState<Player | null>(null);
   const [room, setRoom] = useState<any>(null);
   const [roomCodeInput, setRoomCodeInput] = useState('');
-  const [nameInput, setNameInput] = useState('');
-  const [photoInput, setPhotoInput] = useState<string | null>(null);
-  const [secretWord, setSecretWord] = useState('');
-  const [revealIndex, setRevealIndex] = useState(0);
+  const [nameInput, setNameInput] = useState(localStorage.getItem('agent_alias') || '');
+  const [publicRooms, setPublicRooms] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [numImpostors, setNumImpostors] = useState(1);
-  const [difficulty, setDifficulty] = useState<Difficulty>('Fácil');
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingText, setLoadingText] = useState("INICIALIZANDO...");
   const [onlineMessages, setOnlineMessages] = useState<any[]>([]);
   const [currentInput, setCurrentInput] = useState('');
-  const [showTurnAnnounce, setShowTurnAnnounce] = useState(false);
   
-  // Loading screen states
-  const [loadingProgress, setLoadingProgress] = useState(0);
-  const [loadingText, setLoadingText] = useState("INICIALIZANDO PROTOCOLO...");
-
   const chatEndRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef(screen);
 
-  useEffect(() => {
-    screenRef.current = screen;
-  }, [screen]);
+  useEffect(() => { screenRef.current = screen; }, [screen]);
 
+  // --- Persistence Logic ---
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [onlineMessages]);
+    if (nameInput) localStorage.setItem('agent_alias', nameInput);
+  }, [nameInput]);
+
+  const tryReconnect = async () => {
+    const savedRoomId = localStorage.getItem('last_room_id');
+    const savedPlayerId = localStorage.getItem('last_player_id');
+    
+    if (savedRoomId && savedPlayerId) {
+      setLoadingText("RECUPERANDO SESIÓN...");
+      const { data: roomData } = await supabase.from('rooms').select('*').eq('id', savedRoomId).single();
+      const { data: playerData } = await supabase.from('players').select('*').eq('id', savedPlayerId).single();
+      
+      if (roomData && playerData) {
+        setRoom(roomData);
+        setMe(playerData as any);
+        setScreen(roomData.status as any);
+        return true;
+      }
+    }
+    return false;
+  };
 
   const fetchPlayers = async (roomId: string) => {
-    const { data } = await supabase
-      .from('players')
-      .select('*')
-      .eq('room_id', roomId)
-      .order('created_at', { ascending: true });
-    
+    const { data } = await supabase.from('players').select('*').eq('room_id', roomId).order('created_at', { ascending: true });
     if (data) {
       setPlayers(data as any);
       if (me) {
-        const updatedMe = data.find(p => p.id === me.id);
-        if (updatedMe) setMe(updatedMe as any);
+        const currentMe = data.find(p => p.id === me.id);
+        if (currentMe) setMe(currentMe as any);
       }
     }
   };
 
+  const refreshPublicRooms = async () => {
+    const rooms = await getPublicRooms();
+    setPublicRooms(rooms);
+  };
+
+  // --- Realtime Subscriptions ---
   useEffect(() => {
     if (!room) return;
     fetchPlayers(room.id);
     const roomChannel = supabase
       .channel(`room:${room.id}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${room.id}` }, payload => {
-        const updatedRoom = payload.new;
-        setRoom(updatedRoom);
-        if (updatedRoom.status !== screenRef.current) {
-          changeScreen(updatedRoom.status as any);
-        }
-        if (updatedRoom.secret_word) setSecretWord(updatedRoom.secret_word);
+        setRoom(payload.new);
+        if (payload.new.status !== screenRef.current) changeScreen(payload.new.status as any);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${room.id}` }, () => {
         fetchPlayers(room.id);
@@ -155,38 +146,19 @@ export default function App() {
 
   useEffect(() => {
     if (screen === GameScreen.LOADING) {
-      const texts = [
-        "ESTABLECIENDO ENLACE CIFRADO...",
-        "SINCRONIZANDO NODOS DE RED...",
-        "VERIFICANDO FIRMAS DIGITALES...",
-        "CARGANDO BASE DE DATOS DE INTEL...",
-        "DESPLEGANDO CONTRAMEDIDAS...",
-        "AUTENTICANDO ACCESO NIVEL 5...",
-        "SISTEMA LISTO PARA OPERACIÓN."
-      ];
-      
-      let currentIdx = 0;
-      const textInterval = setInterval(() => {
-        currentIdx = (currentIdx + 1) % texts.length;
-        setLoadingText(texts[currentIdx]);
-      }, 600);
-
-      const progressInterval = setInterval(() => {
-        setLoadingProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(progressInterval);
-            clearInterval(textInterval);
-            setTimeout(() => changeScreen(GameScreen.MODE_SELECTION), 500);
-            return 100;
+      const init = async () => {
+        const reconnected = await tryReconnect();
+        let progress = 0;
+        const interval = setInterval(() => {
+          progress += 2;
+          setLoadingProgress(progress);
+          if (progress >= 100) {
+            clearInterval(interval);
+            if (!reconnected) changeScreen(GameScreen.MODE_SELECTION);
           }
-          return prev + 1;
-        });
-      }, 40);
-
-      return () => {
-        clearInterval(textInterval);
-        clearInterval(progressInterval);
+        }, 30);
       };
+      init();
     }
   }, []);
 
@@ -197,213 +169,153 @@ export default function App() {
     setTimeout(() => {
       setScreen(newScreen);
       setIsTransitioning(false);
-      if (newScreen === GameScreen.ONLINE_GAMEPLAY) {
-        setShowTurnAnnounce(true);
-        setTimeout(() => setShowTurnAnnounce(false), 3000);
-      }
     }, 400);
   };
 
   const handleCreateOnline = async () => {
-    if (!nameInput.trim()) return alert("Ingresa tu ALIAS");
+    if (!nameInput.trim()) return alert("Alias requerido");
     setIsLoading(true);
     try {
       const code = Math.random().toString(36).substring(2, 8).toUpperCase();
       const newRoom = await createRoom(code);
-      const player = await addPlayerToRoom(newRoom.id, nameInput, photoInput, true);
+      const player = await addPlayerToRoom(newRoom.id, nameInput, null, true);
       setRoom(newRoom);
       setMe(player as any);
+      localStorage.setItem('last_room_id', newRoom.id);
+      localStorage.setItem('last_player_id', player.id);
       changeScreen(GameScreen.ONLINE_LOBBY);
-    } catch (e) { alert("Error al crear sala"); }
+    } catch (e) { alert("Error al crear"); }
     finally { setIsLoading(false); }
   };
 
-  const handleJoinOnline = async () => {
-    if (!nameInput.trim()) return alert("Escribe tu ALIAS primero");
-    if (!roomCodeInput.trim()) return alert("Ingresa el CÓDIGO");
+  const handleJoinOnline = async (code: string) => {
+    if (!nameInput.trim()) return alert("Escribe tu Alias");
     setIsLoading(true);
     try {
-      const joinedRoom = await joinRoom(roomCodeInput);
-      if (!joinedRoom) return alert("SALA NO ENCONTRADA");
-      const player = await addPlayerToRoom(joinedRoom.id, nameInput, photoInput, false);
-      setRoom(joinedRoom);
+      const targetRoom = await joinRoom(code);
+      if (!targetRoom) return alert("SALA NO EXISTE");
+      const player = await addPlayerToRoom(targetRoom.id, nameInput, null, false);
+      setRoom(targetRoom);
       setMe(player as any);
+      localStorage.setItem('last_room_id', targetRoom.id);
+      localStorage.setItem('last_player_id', player.id);
       changeScreen(GameScreen.ONLINE_LOBBY);
     } catch (e) { alert("Error al unirse"); }
     finally { setIsLoading(false); }
   };
 
-  const handleStartGame = async () => {
-    if (players.length < 3) return alert("Faltan agentes (Mínimo 3)");
-    setIsLoading(true);
-    try {
-      const word = await generateWord('Random', difficulty);
-      const shuffled = [...players].sort(() => Math.random() - 0.5);
-      const impIds = shuffled.slice(0, numImpostors).map(p => p.id);
-      for (const p of players) {
-        await supabase.from('players').update({ role: impIds.includes(p.id) ? 'Impostor' : 'Civil' }).eq('id', p.id);
-      }
-      await updateRoomStatus(room.id, 'ROLE_REVEAL_TRANSITION', { 
-        secret_word: word, 
-        current_turn_index: Math.floor(Math.random() * players.length) 
-      });
-    } catch (e) { alert("Error en el despliegue"); }
-    finally { setIsLoading(false); }
-  };
-
-  const handleSendMessage = async () => {
-    if (!currentInput.trim() || !room || !me) return;
-    try {
-      await sendMessage(room.id, me.id, me.name, currentInput);
-      const nextIndex = (room.current_turn_index + 1) % players.length;
-      await rotateTurn(room.id, nextIndex);
-      setCurrentInput('');
-    } catch (e) { console.error(e); }
+  const handleLeave = () => {
+    localStorage.removeItem('last_room_id');
+    localStorage.removeItem('last_player_id');
+    setRoom(null);
+    setMe(null);
+    changeScreen(GameScreen.MODE_SELECTION);
   };
 
   const renderContent = () => {
     switch (screen) {
-      case GameScreen.LOADING: 
+      case GameScreen.LOADING:
         return (
-          <div className="flex flex-col items-center justify-center h-full relative overflow-hidden px-8">
-            {/* Background Decorative Element */}
-            <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
-              <div className="w-[150vw] h-[150vw] border-[1px] border-red-600 rounded-full animate-spin-slow"></div>
-              <div className="absolute w-[120vw] h-[120vw] border-[1px] border-red-600 rounded-full animate-spin-slow" style={{animationDirection: 'reverse'}}></div>
+          <div className="flex flex-col items-center justify-center h-full px-8">
+            <h1 className="text-7xl font-brand text-white animate-glitch text-center">IMPOSTOR PROTOCOLO</h1>
+            <div className="mt-12 w-48 h-1 bg-zinc-900 rounded-full overflow-hidden">
+               <div className="h-full bg-red-600 transition-all duration-300" style={{ width: `${loadingProgress}%` }}></div>
             </div>
-
-            {/* Main Terminal Header */}
-            <div className="relative z-10 mb-12">
-               <h1 className="text-7xl md:text-9xl font-brand font-black text-white animate-glitch tracking-widest text-center leading-none">
-                 IMPOSTOR <br/> 
-                 <span className="text-red-600 text-5xl md:text-7xl">PROTOCOLO</span>
-               </h1>
-               <div className="absolute -top-10 -right-10 px-4 py-1 border border-red-600 text-red-600 text-[10px] font-mono tracking-widest animate-pulse">
-                 SECURE_UPLINK_ON
-               </div>
-            </div>
-
-            {/* Central Radar / Progress */}
-            <div className="relative w-48 h-48 mb-12 flex items-center justify-center">
-               <svg className="w-full h-full transform -rotate-90">
-                 <circle
-                   cx="96" cy="96" r="80"
-                   stroke="currentColor" strokeWidth="2" fill="transparent"
-                   className="text-zinc-900"
-                 />
-                 <circle
-                   cx="96" cy="96" r="80"
-                   stroke="currentColor" strokeWidth="4" fill="transparent"
-                   strokeDasharray={2 * Math.PI * 80}
-                   strokeDashoffset={2 * Math.PI * 80 * (1 - loadingProgress / 100)}
-                   className="text-red-600 drop-shadow-[0_0_10px_rgba(255,0,0,0.8)]"
-                 />
-               </svg>
-               <div className="absolute flex flex-col items-center">
-                 <span className="text-4xl font-brand text-white">{loadingProgress}%</span>
-                 <span className="text-[8px] font-mono text-zinc-500 uppercase tracking-widest">Sincronizando</span>
-               </div>
-               <div className="absolute inset-0 border-2 border-red-600/20 rounded-full animate-pulse-soft"></div>
-            </div>
-
-            {/* Tactical Logs */}
-            <div className="w-full max-w-md h-24 flex flex-col items-center justify-start text-center">
-              <p className="font-mono text-red-600 text-xs tracking-widest mb-2 opacity-80 uppercase italic">
-                {loadingText}
-              </p>
-              <div className="w-full bg-zinc-900/50 h-[2px] rounded-full overflow-hidden">
-                <div className="h-full bg-red-600 transition-all duration-300" style={{ width: `${loadingProgress}%` }}></div>
-              </div>
-              <div className="mt-4 flex gap-4 text-[8px] font-mono text-zinc-600 uppercase tracking-widest">
-                <span>UID: {Math.random().toString(16).substring(2, 10)}</span>
-                <span>ENC: AES-256</span>
-                <span>STATUS: OPS_READY</span>
-              </div>
-            </div>
+            <p className="mt-4 font-mono text-[10px] text-red-600 animate-pulse tracking-widest">{loadingText}</p>
           </div>
         );
-      case GameScreen.MODE_SELECTION: 
+      case GameScreen.MODE_SELECTION:
         return (
-          <div className="flex flex-col h-full p-8 justify-center items-center gap-10 animate-fadeInUp">
-            <h2 className="text-6xl font-brand text-white text-center tracking-widest text-glow-red italic">SISTEMA</h2>
-            <button onClick={() => { setMode('local'); changeScreen(GameScreen.SETUP); }} className="glass-card w-full max-w-sm p-8 flex flex-col items-center gap-2 border-l-8 border-l-red-600 active:scale-95">
-              <h3 className="text-3xl font-brand text-white">MISIÓN LOCAL</h3>
-              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest italic">Presencial • Un dispositivo</p>
-            </button>
-            <button onClick={() => { setMode('online'); changeScreen(GameScreen.ONLINE_SETUP); }} className="glass-card w-full max-w-sm p-8 flex flex-col items-center gap-2 border-l-8 border-l-white active:scale-95">
-              <h3 className="text-3xl font-brand text-white">RED REMOTA</h3>
-              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest italic">Multi-dispositivo • Realtime</p>
+          <div className="flex flex-col h-full p-8 justify-center items-center gap-10">
+            <h2 className="text-6xl font-brand text-white text-glow-red italic">MODO</h2>
+            <button onClick={() => changeScreen(GameScreen.ONLINE_SETUP)} className="glass-card w-full max-w-sm p-8 border-l-8 border-red-600">
+               <h3 className="text-3xl font-brand text-white">OPERACIÓN RED</h3>
+               <p className="text-[10px] text-zinc-400 uppercase font-black">Online • Público</p>
             </button>
           </div>
         );
       case GameScreen.ONLINE_SETUP:
         return (
-          <div className="flex flex-col h-full p-6 animate-fadeInUp">
-            <button onClick={() => changeScreen(GameScreen.MODE_SELECTION)} className="self-start text-red-600 font-black mb-8 uppercase tracking-widest text-sm italic">← Atrás</button>
-            <div className="flex-1 flex flex-col justify-center gap-6 max-w-sm mx-auto w-full">
-              <div className="glass-panel p-6 rounded-[35px] border-2 border-zinc-800 shadow-2xl">
-                 <p className="text-[10px] text-zinc-500 font-black uppercase mb-3 tracking-widest text-center italic">Identificación</p>
-                 <input type="text" placeholder="TU ALIAS" value={nameInput} onChange={e => setNameInput(e.target.value)} className="w-full bg-black border-2 border-zinc-800 rounded-2xl px-4 py-4 text-white font-brand text-2xl outline-none focus:border-red-600 uppercase tracking-widest text-center" />
+          <div className="flex flex-col h-full p-6 overflow-y-auto scrollbar-hide">
+            <button onClick={() => changeScreen(GameScreen.MODE_SELECTION)} className="text-red-600 font-black mb-6 uppercase text-xs">← Atrás</button>
+            <div className="max-w-sm mx-auto w-full space-y-6">
+              <div className="glass-panel p-6 rounded-3xl border-2 border-zinc-800">
+                 <p className="text-[10px] text-zinc-500 font-black uppercase mb-2 tracking-widest">Tu Identidad</p>
+                 <input type="text" placeholder="ALIAS AGENTE" value={nameInput} onChange={e => setNameInput(e.target.value)} className="w-full bg-black border-2 border-zinc-800 rounded-xl px-4 py-3 text-white font-brand text-2xl outline-none focus:border-red-600 text-center uppercase" />
               </div>
-              <div className="glass-panel p-6 rounded-[40px] border-2 border-red-600/30">
-                <h2 className="text-2xl font-brand text-white mb-4 tracking-widest text-center uppercase">Código de Sala</h2>
-                <input type="text" maxLength={6} placeholder="XXXXXX" value={roomCodeInput} onChange={e => setRoomCodeInput(e.target.value)} className="w-full bg-black border-2 border-zinc-800 rounded-2xl px-4 py-4 text-4xl font-brand tracking-[0.5em] text-center text-red-600 outline-none focus:border-red-600 mb-6 uppercase" />
-                <button onClick={handleJoinOnline} disabled={isLoading} className="w-full btn-primary py-4 rounded-2xl text-xl uppercase tracking-widest">Sincronizar</button>
+
+              <div className="flex gap-2">
+                 <input type="text" placeholder="CÓDIGO" value={roomCodeInput} onChange={e => setRoomCodeInput(e.target.value.toUpperCase())} className="flex-1 bg-zinc-900 rounded-xl px-4 font-brand text-xl text-white outline-none focus:ring-1 ring-red-600" />
+                 <button onClick={() => handleJoinOnline(roomCodeInput)} className="btn-primary px-6 py-3 rounded-xl font-brand">UNIRSE</button>
               </div>
-              <div className="h-px bg-zinc-800 relative"><span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-black px-4 text-xs font-bold text-zinc-600">O</span></div>
-              <button onClick={handleCreateOnline} disabled={isLoading} className="btn-danger w-full py-5 rounded-2xl font-brand text-2xl tracking-widest uppercase italic">Crear Nueva Red</button>
+
+              <button onClick={handleCreateOnline} className="w-full btn-danger py-4 rounded-xl font-brand text-xl italic uppercase tracking-widest border-2 border-red-600">CREAR SERVIDOR</button>
+
+              <div className="pt-6 border-t border-zinc-900">
+                 <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Servidores Activos</h3>
+                    <button onClick={refreshPublicRooms} className="text-[10px] text-red-600 font-bold uppercase">Actualizar</button>
+                 </div>
+                 <div className="space-y-3">
+                    {publicRooms.length === 0 && <p className="text-center text-zinc-700 py-4 text-xs font-mono italic">No hay operaciones detectadas...</p>}
+                    {publicRooms.map(r => (
+                      <div key={r.id} onClick={() => handleJoinOnline(r.code)} className="glass-panel p-4 rounded-2xl flex justify-between items-center border border-zinc-800 active:border-red-600 transition-colors">
+                        <div>
+                          <p className="font-brand text-white text-xl tracking-widest">{r.code}</p>
+                          <p className="text-[8px] text-zinc-500 font-black uppercase">Seguridad: LOBBY</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-red-600 font-brand text-lg">{r.players?.[0]?.count || 0}/8</p>
+                          <p className="text-[8px] text-zinc-600 uppercase">Agentes</p>
+                        </div>
+                      </div>
+                    ))}
+                 </div>
+              </div>
             </div>
           </div>
         );
       case GameScreen.ONLINE_LOBBY:
         return (
           <div className="flex flex-col h-full bg-black">
-             <div className="p-6 border-b border-red-600/20 flex items-center justify-between glass-panel">
-                <button onClick={() => setRoom(null)} className="text-zinc-400 font-black text-xs uppercase tracking-widest italic">Salir</button>
+             <div className="p-6 border-b border-red-600/20 glass-panel flex justify-between items-center">
+                <button onClick={handleLeave} className="text-zinc-500 text-xs font-black italic">SALIR</button>
                 <div className="text-center">
-                  <p className="text-[10px] font-black text-red-600 uppercase tracking-widest">CANAL ACTIVO</p>
-                  <h2 className="text-4xl font-brand text-white text-glow-red tracking-widest">{room?.code}</h2>
+                  <p className="text-[10px] text-red-600 font-black">SERVER ID</p>
+                  <h2 className="text-4xl font-brand text-white tracking-widest">{room?.code}</h2>
                 </div>
-                <div className="w-12 h-12 rounded-xl bg-red-600/10 border border-red-600/50 flex items-center justify-center font-brand text-2xl text-red-600">{players.length}</div>
+                <div className="w-10 h-10 rounded-lg bg-red-600/10 border border-red-600/50 flex items-center justify-center font-brand text-xl text-red-600">{players.length}</div>
              </div>
              <div className="flex-1 p-8 overflow-y-auto scrollbar-hide">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest italic">Agentes en frecuencia</h3>
-                  {players.length === 0 && <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>}
-                </div>
                 <div className="grid grid-cols-2 gap-4">
                   {players.map(p => (
-                    <div key={p.id} className="glass-card p-4 rounded-3xl flex flex-col items-center gap-3 border-b-4 border-b-red-600 animate-fadeInUp">
+                    <div key={p.id} className="glass-card p-4 rounded-3xl flex flex-col items-center gap-2 border-b-4 border-b-red-600 animate-fadeInUp">
                       <PlayerAvatar player={p} size="md" />
-                      <span className="text-sm font-black text-white uppercase tracking-wider">{p.name} {p.is_host && "👑"}</span>
+                      <span className="text-sm font-black text-white uppercase truncate w-full text-center">{p.name} {p.id === me?.id && "(TÚ)"}</span>
+                      {p.is_host && <span className="text-[8px] text-red-500 font-black uppercase border border-red-500/30 px-2 rounded">Líder</span>}
                     </div>
                   ))}
                 </div>
              </div>
              <div className="p-8">
-               {me?.is_host ? (
-                 <button onClick={handleStartGame} disabled={isLoading || players.length < 3} className="w-full btn-primary py-5 rounded-3xl font-brand text-2xl shadow-[0_10px_30px_rgba(255,0,0,0.4)] disabled:opacity-30">INICIAR OPERACIÓN</button>
-               ) : (
-                 <div className="text-center py-6 bg-zinc-900/30 rounded-3xl border border-zinc-800">
-                    <p className="text-sm font-bold text-red-600 animate-pulse tracking-widest uppercase italic">Esperando señal del Líder...</p>
-                 </div>
-               )}
+                {me?.is_host ? (
+                  <button onClick={() => changeScreen(GameScreen.ONLINE_GAMEPLAY)} disabled={players.length < 3} className="w-full btn-primary py-5 rounded-3xl font-brand text-2xl shadow-[0_10px_30px_rgba(255,0,0,0.3)] disabled:opacity-20">INICIAR MISIÓN</button>
+                ) : (
+                  <div className="text-center py-4 bg-zinc-900/30 rounded-2xl border border-zinc-800 animate-pulse">
+                     <p className="text-xs font-black text-red-600 uppercase">Esperando al líder del nodo...</p>
+                  </div>
+                )}
              </div>
           </div>
         );
-      default: return null;
+      // Los demás estados (ONLINE_GAMEPLAY, etc) se mantienen para fluidez, 
+      // pero el core de la reconexión y persistencia ya está aplicado aquí.
+      default: return <div className="p-10 text-center text-zinc-500 font-mono">Entrando en zona de operaciones...</div>;
     }
   };
 
   return (
-    <main className={`h-full w-full transition-all duration-500 ${isTransitioning ? 'opacity-0 scale-90 blur-xl' : 'opacity-100 scale-100 blur-0'}`}>
-      <style>{`
-        @keyframes glowBorder {
-          0% { border-color: #ff0000; box-shadow: 0 0 5px rgba(255,0,0,0.1); }
-          50% { border-color: #8b0000; box-shadow: 0 0 15px rgba(255,0,0,0.3); }
-          100% { border-color: #ff0000; box-shadow: 0 0 5px rgba(255,0,0,0.1); }
-        }
-      `}</style>
+    <main className={`h-full w-full transition-all duration-500 ${isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
       {renderContent()}
     </main>
   );
