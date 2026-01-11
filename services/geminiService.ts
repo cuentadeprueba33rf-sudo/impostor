@@ -1,44 +1,49 @@
 
-import { GoogleGenAI } from "@google/genai";
 import { Difficulty } from "../types";
 
-const getGeminiApiKey = (): string => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("API_KEY environment variable not set");
-  }
-  return apiKey;
+const WORD_LISTS: Record<string, string[]> = {
+  'Animales': [
+    'León', 'Tigre', 'Elefante', 'Jirafa', 'Canguro', 
+    'Pingüino', 'Delfín', 'Tiburón', 'Águila', 'Búho', 
+    'Lobo', 'Oso', 'Mono', 'Cebra', 'Hipopótamo', 
+    'Rinoceronte', 'Tortuga', 'Serpiente', 'Camello', 'Panda'
+  ],
+  'Vida Cotidiana': [
+    'Cepillo de dientes', 'Llaves', 'Reloj', 'Celular', 'Laptop', 
+    'Mochila', 'Zapatos', 'Espejo', 'Control remoto', 'Lámpara', 
+    'Almohada', 'Toalla', 'Sombrilla', 'Billetera', 'Botella de agua', 
+    'Audífonos', 'Gafas', 'Peine', 'Jabón', 'Plato'
+  ],
+  'Comida': [
+    'Pizza', 'Hamburguesa', 'Sushi', 'Taco', 'Helado', 
+    'Chocolate', 'Manzana', 'Banana', 'Pasta', 'Ensalada', 
+    'Sopa', 'Arroz', 'Huevo', 'Queso', 'Pan', 
+    'Café', 'Jugo', 'Dona', 'Galleta', 'Filete'
+  ],
+  'Deportes': [
+    'Fútbol', 'Baloncesto', 'Tenis', 'Natación', 'Atletismo', 
+    'Ciclismo', 'Boxeo', 'Voleibol', 'Béisbol', 'Golf', 
+    'Rugby', 'Karate', 'Surf', 'Esquí', 'Patinaje', 
+    'Yoga', 'Gimnasia', 'Remo', 'Escalada', 'Ajedrez'
+  ],
+  'Random': [
+    'Bitcoin', 'Inteligencia Artificial', 'Agujero Negro', 'Satélite', 'Pirámide', 
+    'Volcán', 'Tornado', 'Galaxia', 'Submarino', 'Robot', 
+    'Astronauta', 'Brújula', 'Microscopio', 'Telescopio', 'ADN', 
+    'Molécula', 'Átomo', 'Chip', 'Laser', 'Holograma'
+  ]
 };
 
-const fallbacks: Record<string, string[]> = {
-    'Vida Cotidiana': ['Cepillo de dientes', 'Llaves', 'Tráfico', 'Despertador', 'Supermercado'],
-    'Animales': ['Perro', 'Gato', 'Elefante', 'Ornitorrinco'],
-    'Random': ['Bitcoin', 'Inteligencia Artificial', 'Agujero Negro']
-};
-
-const getFallbackWord = (theme: string, difficulty: Difficulty): string => {
-    const list = fallbacks[theme] || fallbacks['Random'];
-    return list[Math.floor(Math.random() * list.length)];
-};
-
-export const generateWord = async (theme: string, difficulty: Difficulty): Promise<string> => {
-  try {
-    const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() });
-    
-    let prompt = `Actúa como el motor de juego para 'El Impostor'. Genera una palabra secreta.
-    Categoría: "${theme}". Dificultad: "${difficulty}".
-    Responde ÚNICAMENTE con la palabra. Sin puntos ni comillas.`;
-
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-    });
-    
-    const word = response.text?.trim();
-    if (!word || word.length > 50) return getFallbackWord(theme, difficulty);
-    return word.replace(/^["']|["']$/g, '');
-  } catch (error) {
-    console.error("Error Gemini:", error);
-    return getFallbackWord(theme, difficulty);
-  }
+export const generateWord = async (theme: string, _difficulty: Difficulty): Promise<string> => {
+  // Obtenemos la lista del tema o usamos Random por defecto
+  const list = WORD_LISTS[theme] || WORD_LISTS['Random'];
+  
+  // Seleccionamos una palabra al azar
+  const randomIndex = Math.floor(Math.random() * list.length);
+  const word = list[randomIndex];
+  
+  // Simulamos un pequeño retraso para mantener la sensación de "procesamiento"
+  return new Promise((resolve) => {
+    setTimeout(() => resolve(word), 500);
+  });
 };

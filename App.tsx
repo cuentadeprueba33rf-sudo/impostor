@@ -229,6 +229,7 @@ export default function App() {
           <div className="flex flex-col h-full p-8 overflow-y-auto scrollbar-hide">
              <input type="text" placeholder="TU ALIAS" value={nameInput} onChange={e => setNameInput(e.target.value)} className="w-full bg-transparent border-b border-white/10 py-5 text-5xl font-brand text-white outline-none mb-12 uppercase" />
              <button onClick={async () => {
+               if (!nameInput.trim()) return alert("Ingresa un Alias");
                const code = Math.random().toString(36).substring(2, 8).toUpperCase();
                const r = await createRoom(code);
                const p = await addPlayerToRoom(r.id, nameInput, null, true);
@@ -239,6 +240,7 @@ export default function App() {
              <div className="flex gap-2">
                 <input type="text" placeholder="CÓDIGO" value={roomCodeInput} onChange={e => setRoomCodeInput(e.target.value.toUpperCase())} className="flex-1 bg-white/5 rounded-3xl px-8 font-brand text-2xl text-white outline-none" />
                 <button onClick={async () => {
+                  if (!nameInput.trim()) return alert("Ingresa un Alias");
                   const r = await joinRoom(roomCodeInput);
                   if (!r) return alert("No existe");
                   const p = await addPlayerToRoom(r.id, nameInput, null, false);
@@ -257,14 +259,14 @@ export default function App() {
               {players.map(p => (
                 <div key={p.id} className="glass-card p-6 flex flex-col items-center">
                   <PlayerAvatar player={p} size="md" />
-                  <p className="mt-4 font-bold text-xs uppercase">{p.name}</p>
+                  <p className="mt-4 font-bold text-xs uppercase text-center w-full truncate">{p.name}</p>
                 </div>
               ))}
             </div>
             {me?.is_host && (
               <div className="mt-8 space-y-4">
-                <select value={selectedTheme} onChange={e => setSelectedTheme(e.target.value)} className="w-full bg-zinc-900 border border-white/10 p-4 rounded-xl text-white outline-none">
-                  {['Random', 'Animales', 'Vida Cotidiana', 'Comida', 'Deportes'].map(t => <option key={t} value={t}>{t}</option>)}
+                <select value={selectedTheme} onChange={e => setSelectedTheme(e.target.value)} className="w-full bg-zinc-900 border border-white/10 p-4 rounded-xl text-white outline-none font-bold uppercase tracking-widest text-xs">
+                  {['Random', 'Animales', 'Vida Cotidiana', 'Comida', 'Deportes'].map(t => <option key={t} value={t}>{t.toUpperCase()}</option>)}
                 </select>
                 <button onClick={handleStartGameSequence} className="btn-modern w-full py-6 rounded-3xl text-2xl">INICIAR OPERACIÓN</button>
               </div>
@@ -320,7 +322,7 @@ export default function App() {
                 <button key={p.id} onClick={() => handleVote(p.id)} className="glass-card p-6 flex items-center justify-between hover:border-red-600 transition-all">
                   <div className="flex items-center gap-4">
                     <PlayerAvatar player={p} size="sm" />
-                    <span className="font-bold uppercase tracking-widest">{p.name}</span>
+                    <span className="font-bold uppercase tracking-widest truncate w-32 text-left">{p.name}</span>
                   </div>
                   <span className="text-[10px] text-zinc-600 font-black">SELECCIONAR</span>
                 </button>
